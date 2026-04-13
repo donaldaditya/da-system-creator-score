@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 import { Creator } from "@/types/creator";
 import { mapColumns, mapRowToCreator, getMatchStats, ColumnMapping } from "./schema-mapper";
 import { ParseResult } from "./csv";
+import { isTikTokPartnerCenterFormat, aggregatePartnerCenterRows } from "./tiktok-partner-center";
 
 // Re-use the row-to-creator logic from csv.ts via a shared helper
 import {
@@ -59,19 +60,43 @@ export async function parseExcelFile(file: File): Promise<ParseResult> {
         }
 
         const rawHeaders = Object.keys(jsonData[0]);
+
+        // Convert all rows to string maps once
+        const stringRows: Record<string, string>[] = jsonData.map((row) => {
+          const r: Record<string, string> = {};
+          for (const [k, v] of Object.entries(row)) r[k] = String(v ?? "");
+          return r;
+        });
+
+        // ── TikTok Partner Center detection ──────────────────────────────────
+        if (isTikTokPartnerCenterFormat(rawHeaders)) {
+          const agg = aggregatePartnerCenterRows(stringRows);
+          resolve({
+            creators: agg.creators,
+            mappings: [],
+            matchStats: { matched: 0, unrecognized: 0, unrecognizedHeaders: [] },
+            errors: agg.creators.length === 0 ? ["No creators found in Partner Center export"] : [],
+            rawHeaders,
+            isPartnerCenter: true,
+            partnerCenterMeta: {
+              totalRows: agg.totalRows,
+              creatorCount: agg.creatorCount,
+              referenceDate: agg.referenceDate,
+              detectedColumns: agg.detectedColumns,
+            },
+          });
+          return;
+        }
+
+        // ── Standard creator-per-row format ──────────────────────────────────
         const mappings = mapColumns(rawHeaders);
         const matchStats = getMatchStats(mappings);
         const errors: string[] = [];
 
-        const creators: Creator[] = jsonData
+        const creators: Creator[] = stringRows
           .map((row, i) => {
             try {
-              // Convert all values to strings for consistent processing
-              const stringRow: Record<string, string> = {};
-              for (const [k, v] of Object.entries(row)) {
-                stringRow[k] = String(v ?? "");
-              }
-              return excelRowToCreator(stringRow, mappings, i);
+              return excelRowToCreator(row, mappings, i);
             } catch (e) {
               errors.push(`Row ${i + 2}: ${e instanceof Error ? e.message : String(e)}`);
               return null;

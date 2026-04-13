@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { parseCsvFile } from "@/lib/parsers/csv";
 import { parseExcelFile } from "@/lib/parsers/excel";
 import type { Creator } from "@/types/creator";
+import type { PartnerCenterMeta } from "@/lib/parsers/csv";
 
 interface CsvUploadProps {
   onParsed: (creators: Creator[]) => void;
@@ -17,6 +18,7 @@ export function CsvUpload({ onParsed }: CsvUploadProps) {
   const [rowCount, setRowCount] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
   const [unrecognized, setUnrecognized] = useState<string[]>([]);
+  const [pcMeta, setPcMeta] = useState<PartnerCenterMeta | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const processFile = useCallback(
@@ -39,6 +41,7 @@ export function CsvUpload({ onParsed }: CsvUploadProps) {
         setRowCount(result.creators.length);
         setErrors(result.errors.slice(0, 5));
         setUnrecognized(result.matchStats.unrecognizedHeaders);
+        setPcMeta(result.isPartnerCenter ? (result.partnerCenterMeta ?? null) : null);
 
         if (result.creators.length > 0) {
           setState("done");
@@ -167,12 +170,25 @@ export function CsvUpload({ onParsed }: CsvUploadProps) {
             <span className="text-xs" style={{ color: "#6B7280" }}>
               {fileName}
             </span>
+            {pcMeta && (
+              <span
+                className="text-[10px] px-2 py-0.5 rounded-full mt-0.5"
+                style={{
+                  backgroundColor: "rgba(99, 102, 241, 0.15)",
+                  color: "#818CF8",
+                  border: "1px solid rgba(99, 102, 241, 0.3)",
+                }}
+              >
+                TikTok Partner Center · {pcMeta.totalRows} orders aggregated
+              </span>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 setState("idle");
                 setFileName("");
                 setRowCount(0);
+                setPcMeta(null);
                 if (inputRef.current) inputRef.current.value = "";
               }}
               className="text-xs mt-1"
@@ -187,8 +203,11 @@ export function CsvUpload({ onParsed }: CsvUploadProps) {
             <span className="text-sm font-medium" style={{ color: "#E8EAF0" }}>
               Drop CSV or Excel here
             </span>
-            <span className="text-xs" style={{ color: "#6B7280" }}>
+            <span className="text-xs text-center" style={{ color: "#6B7280" }}>
               .csv, .xlsx, .xls — up to 500 rows
+            </span>
+            <span className="text-[10px] text-center" style={{ color: "#4B5563" }}>
+              Supports TikTok Partner Center exports &amp; Kalodata CSVs
             </span>
             <span
               className="text-xs px-3 py-1 rounded-full"
@@ -203,6 +222,35 @@ export function CsvUpload({ onParsed }: CsvUploadProps) {
           </div>
         )}
       </div>
+
+      {/* Partner Center info panel */}
+      {pcMeta && state === "done" && (
+        <div
+          className="rounded-lg p-3 space-y-1.5"
+          style={{
+            backgroundColor: "rgba(99, 102, 241, 0.06)",
+            border: "1px solid rgba(99, 102, 241, 0.25)",
+          }}
+        >
+          <p className="text-xs font-semibold" style={{ color: "#818CF8" }}>
+            🔗 TikTok Partner Center format detected
+          </p>
+          <div className="grid grid-cols-3 gap-2 text-[10px]" style={{ color: "#6B7280" }}>
+            <div>
+              <span style={{ color: "#E8EAF0", fontWeight: 600 }}>{pcMeta.totalRows}</span> order rows
+            </div>
+            <div>
+              <span style={{ color: "#E8EAF0", fontWeight: 600 }}>{pcMeta.creatorCount}</span> creators
+            </div>
+            <div>
+              Ref date: <span style={{ color: "#E8EAF0" }}>{pcMeta.referenceDate.toLocaleDateString()}</span>
+            </div>
+          </div>
+          <p className="text-[10px]" style={{ color: "#4B5563" }}>
+            GMV aggregated into 30/60/90d windows · Livestream &amp; video counts computed automatically
+          </p>
+        </div>
+      )}
 
       {/* Errors */}
       {errors.length > 0 && (

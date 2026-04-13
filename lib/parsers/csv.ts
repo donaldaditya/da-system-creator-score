@@ -1,6 +1,14 @@
 import Papa from "papaparse";
 import { Creator, Platform, Category, LSTier, ContentConsistencyLevel, NicheFocusLevel } from "@/types/creator";
 import { mapColumns, mapRowToCreator, getMatchStats, ColumnMapping } from "./schema-mapper";
+import { isTikTokPartnerCenterFormat, aggregatePartnerCenterRows } from "./tiktok-partner-center";
+
+export interface PartnerCenterMeta {
+  totalRows: number;
+  creatorCount: number;
+  referenceDate: Date;
+  detectedColumns: Record<string, string>;
+}
 
 export interface ParseResult {
   creators: Creator[];
@@ -8,6 +16,10 @@ export interface ParseResult {
   matchStats: ReturnType<typeof getMatchStats>;
   errors: string[];
   rawHeaders: string[];
+  /** True when file was detected as a TikTok Partner Center order export */
+  isPartnerCenter?: boolean;
+  /** Only present when isPartnerCenter is true */
+  partnerCenterMeta?: PartnerCenterMeta;
 }
 
 /**
@@ -24,22 +36,44 @@ export async function parseCsvFile(file: File): Promise<ParseResult> {
       dynamicTyping: false, // We handle type coercion in schema-mapper
       complete: (results) => {
         const rawHeaders = results.meta.fields ?? [];
+        const parseErrors: string[] = results.errors.map((e) => `Row ${e.row}: ${e.message}`);
+
+        // ── TikTok Partner Center detection ──────────────────────────────────
+        if (isTikTokPartnerCenterFormat(rawHeaders)) {
+          const agg = aggregatePartnerCenterRows(results.data as Record<string, string>[]);
+          resolve({
+            creators: agg.creators,
+            mappings: [],
+            matchStats: { matched: 0, unrecognized: 0, unrecognizedHeaders: [] },
+            errors: agg.creators.length === 0 ? ["No creators found in Partner Center export"] : parseErrors,
+            rawHeaders,
+            isPartnerCenter: true,
+            partnerCenterMeta: {
+              totalRows: agg.totalRows,
+              creatorCount: agg.creatorCount,
+              referenceDate: agg.referenceDate,
+              detectedColumns: agg.detectedColumns,
+            },
+          });
+          return;
+        }
+
+        // ── Standard creator-per-row format ──────────────────────────────────
         const mappings = mapColumns(rawHeaders);
         const matchStats = getMatchStats(mappings);
-        const errors: string[] = results.errors.map((e) => `Row ${e.row}: ${e.message}`);
 
         const creators: Creator[] = results.data
           .map((row, i) => {
             try {
-              return rowToCreator(row, mappings, i);
+              return rowToCreator(row as Record<string, string>, mappings, i);
             } catch (e) {
-              errors.push(`Row ${i + 2}: ${e instanceof Error ? e.message : String(e)}`);
+              parseErrors.push(`Row ${i + 2}: ${e instanceof Error ? e.message : String(e)}`);
               return null;
             }
           })
           .filter((c): c is Creator => c !== null);
 
-        resolve({ creators, mappings, matchStats, errors, rawHeaders });
+        resolve({ creators, mappings, matchStats, errors: parseErrors, rawHeaders });
       },
       error: (error) => {
         resolve({
