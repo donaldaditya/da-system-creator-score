@@ -6,6 +6,7 @@ import { Platform } from "@/types/creator";
 
 interface UrlPasteProps {
   onParsed: (creators: Creator[]) => void;
+  onSwitchToManual?: (handle: string, platform: Platform) => void;
 }
 
 type UrlStatus = "idle" | "processing" | "success" | "error";
@@ -17,7 +18,7 @@ interface UrlEntry {
   creator?: Partial<Creator>;
 }
 
-export function UrlPaste({ onParsed }: UrlPasteProps) {
+export function UrlPaste({ onParsed, onSwitchToManual }: UrlPasteProps) {
   const [textarea, setTextarea] = useState("");
   const [entries, setEntries] = useState<UrlEntry[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -151,7 +152,7 @@ export function UrlPaste({ onParsed }: UrlPasteProps) {
           }}
         />
         <p className="text-[10px] mt-1" style={{ color: "#6B7280" }}>
-          Note: URL scraping requires a connected data API. Handles will be extracted automatically.
+          TikTok/Instagram don't allow scraping — handles are extracted and you fill in metrics manually. Click <strong style={{ color: "#00D4FF" }}>+ Add metrics →</strong> after extracting.
         </p>
       </div>
 
@@ -195,9 +196,29 @@ export function UrlPaste({ onParsed }: UrlPasteProps) {
                 {entry.url}
               </span>
               {entry.status === "success" && entry.creator && (
-                <span style={{ color: "#10B981" }}>
-                  @{entry.creator.handle}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span style={{ color: "#10B981" }}>
+                    @{entry.creator.handle}
+                  </span>
+                  {onSwitchToManual && (
+                    <button
+                      onClick={() =>
+                        onSwitchToManual(
+                          entry.creator!.handle!,
+                          entry.creator!.platform ?? Platform.TikTok
+                        )
+                      }
+                      className="px-2 py-0.5 rounded text-[10px] font-semibold transition-colors"
+                      style={{
+                        backgroundColor: "rgba(0, 212, 255, 0.12)",
+                        color: "#00D4FF",
+                        border: "1px solid rgba(0, 212, 255, 0.3)",
+                      }}
+                    >
+                      + Add metrics →
+                    </button>
+                  )}
+                </div>
               )}
               {entry.status === "error" && (
                 <span style={{ color: "#EF4444" }}>{entry.error}</span>

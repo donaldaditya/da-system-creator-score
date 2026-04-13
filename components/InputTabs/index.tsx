@@ -5,6 +5,7 @@ import { CsvUpload } from "./CsvUpload";
 import { ManualEntry } from "./ManualEntry";
 import { UrlPaste } from "./UrlPaste";
 import type { Creator } from "@/types/creator";
+import { Platform } from "@/types/creator";
 
 interface InputTabsProps {
   onCreatorsParsed: (creators: Creator[]) => void;
@@ -21,6 +22,20 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 
 export function InputTabs({ onCreatorsParsed, creatorCount }: InputTabsProps) {
   const [activeTab, setActiveTab] = useState<Tab>("csv");
+  const [prefillHandle, setPrefillHandle] = useState<string>("");
+  const [prefillPlatform, setPrefillPlatform] = useState<Platform>(Platform.TikTok);
+
+  const handleSwitchToManual = (handle: string, platform: Platform) => {
+    setPrefillHandle(handle);
+    setPrefillPlatform(platform);
+    setActiveTab("manual");
+  };
+
+  const handleManualParsed = (creators: Creator[]) => {
+    onCreatorsParsed(creators);
+    // Clear prefill after use
+    setPrefillHandle("");
+  };
 
   return (
     <div
@@ -59,10 +74,17 @@ export function InputTabs({ onCreatorsParsed, creatorCount }: InputTabsProps) {
           <CsvUpload onParsed={onCreatorsParsed} />
         )}
         {activeTab === "manual" && (
-          <ManualEntry onParsed={onCreatorsParsed} />
+          <ManualEntry
+            onParsed={handleManualParsed}
+            prefillHandle={prefillHandle}
+            prefillPlatform={prefillHandle ? prefillPlatform : undefined}
+          />
         )}
         {activeTab === "url" && (
-          <UrlPaste onParsed={onCreatorsParsed} />
+          <UrlPaste
+            onParsed={onCreatorsParsed}
+            onSwitchToManual={handleSwitchToManual}
+          />
         )}
       </div>
 

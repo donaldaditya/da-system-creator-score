@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Platform,
   Category,
@@ -11,6 +11,8 @@ import type { Creator } from "@/types/creator";
 
 interface ManualEntryProps {
   onParsed: (creators: Creator[]) => void;
+  prefillHandle?: string;
+  prefillPlatform?: Platform;
 }
 
 interface FormData {
@@ -102,10 +104,25 @@ function labelStyle(): React.CSSProperties {
   };
 }
 
-export function ManualEntry({ onParsed }: ManualEntryProps) {
-  const [form, setForm] = useState<FormData>({ ...EMPTY_FORM });
+export function ManualEntry({ onParsed, prefillHandle, prefillPlatform }: ManualEntryProps) {
+  const [form, setForm] = useState<FormData>({
+    ...EMPTY_FORM,
+    handle: prefillHandle ?? "",
+    platform: prefillPlatform ?? Platform.TikTok,
+  });
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [dataMode, setDataMode] = useState<"branding" | "conversion" | "both">("both");
+
+  // When a new handle is pre-filled from URL paste, update handle + platform fields
+  useEffect(() => {
+    if (prefillHandle) {
+      setForm((prev) => ({
+        ...prev,
+        handle: prefillHandle,
+        platform: prefillPlatform ?? Platform.TikTok,
+      }));
+    }
+  }, [prefillHandle, prefillPlatform]);
 
   const set = (key: keyof FormData, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -157,6 +174,24 @@ export function ManualEntry({ onParsed }: ManualEntryProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Prefill banner */}
+      {prefillHandle && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+          style={{
+            backgroundColor: "rgba(0, 212, 255, 0.08)",
+            border: "1px solid rgba(0, 212, 255, 0.25)",
+            color: "#00D4FF",
+          }}
+        >
+          <span>🔗</span>
+          <span>
+            Handle imported from URL — fill in the metrics below to score{" "}
+            <strong>@{prefillHandle}</strong>
+          </span>
+        </div>
+      )}
+
       {/* Identity */}
       <div className="grid grid-cols-3 gap-3">
         <div className="col-span-1">
