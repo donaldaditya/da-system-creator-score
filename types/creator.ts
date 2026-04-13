@@ -82,6 +82,7 @@ export interface Creator {
   contentConsistency?: ContentConsistencyLevel;
   nicheFocus?: NicheFocusLevel;
   nicheAlignment?: number;     // 0-100 score for category match
+  followerGrowthRate?: number; // % growth in last 30d (from TTCM / TikTok ONE)
 
   // Conversion Metrics
   lsTier?: LSTier;

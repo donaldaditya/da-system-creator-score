@@ -150,6 +150,7 @@ function excelRowToCreator(
     contentConsistency: normalizeConsistency(mapped.contentConsistency as string | null),
     nicheFocus: normalizeNicheFocus(mapped.nicheFocus as string | null),
     nicheAlignment: mapped.nicheAlignment as number | undefined,
+    followerGrowthRate: mapped.followerGrowthRate as number | undefined,
 
     // Conversion
     lsTier: normalizeLsTier(mapped.lsTier as string | null),
