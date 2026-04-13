@@ -42,10 +42,17 @@ export default function HomePage() {
 
   const handleCreatorsParsed = (newCreators: Creator[]) => {
     setCreators((prev) => {
-      // Deduplicate by handle
-      const existing = new Set(prev.map((c) => c.handle));
-      const fresh = newCreators.filter((c) => !existing.has(c.handle));
-      return [...prev, ...fresh];
+      // Replace existing creators with the same handle (newer entry wins — has more data)
+      const updated = [...prev];
+      for (const newC of newCreators) {
+        const existingIdx = updated.findIndex((c) => c.handle === newC.handle);
+        if (existingIdx >= 0) {
+          updated[existingIdx] = newC; // replace with fuller data
+        } else {
+          updated.push(newC);
+        }
+      }
+      return updated;
     });
   };
 

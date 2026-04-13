@@ -96,8 +96,15 @@ export function UrlPaste({ onParsed, onSwitchToManual }: UrlPasteProps) {
 
     setIsProcessing(false);
 
-    if (successCreators.length > 0) {
+    // If we have a manual handoff callback, don't queue empty creators —
+    // just switch to Manual Entry so the user fills in real metrics.
+    // If no handoff (standalone use), queue them directly.
+    if (successCreators.length > 0 && !onSwitchToManual) {
       onParsed(successCreators);
+    }
+    // Auto-switch to manual for the first extracted handle
+    if (successCreators.length === 1 && onSwitchToManual) {
+      onSwitchToManual(successCreators[0].handle, successCreators[0].platform);
     }
   };
 
