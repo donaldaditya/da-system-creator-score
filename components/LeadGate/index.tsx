@@ -106,7 +106,7 @@ export function LeadGate({ children }: { children: React.ReactNode }) {
                 fontSize: "16px",
               }}>📊</div>
               <span style={{ color: "#00D4FF", fontSize: "13px", fontWeight: 700, letterSpacing: "0.05em" }}>
-                Creator ROI Scorer
+                DA System: Creator Score
               </span>
             </div>
             <h2 style={{ color: "#E8EAF0", fontSize: "20px", fontWeight: 700, marginBottom: "6px" }}>

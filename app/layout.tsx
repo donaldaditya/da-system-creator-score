@@ -3,8 +3,8 @@ import "./globals.css";
 import { LeadGate } from "@/components/LeadGate";
 
 export const metadata: Metadata = {
-  title: "Creator ROI Scorer",
-  description: "Data-driven creator scoring for affiliate marketing campaigns",
+  title: "DA System: Creator Score",
+  description: "Decision Architecture for Commerce Teams",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

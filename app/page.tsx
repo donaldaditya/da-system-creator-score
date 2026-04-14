@@ -252,8 +252,8 @@ export default function HomePage() {
       <header className="border-b px-6 py-4" style={{ borderColor: "#1E1E2E", backgroundColor: "#0D0D14" }}>
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold">Creator ROI Scorer</h1>
-            <p className="text-xs" style={{ color: "#6B7280" }}>Data-driven creator scoring for affiliate campaigns</p>
+            <h1 className="text-lg font-bold">DA System: Creator Score</h1>
+            <p className="text-xs" style={{ color: "#6B7280" }}>Decision Architecture for Commerce Teams</p>
           </div>
           <span className="text-[10px] px-2 py-1 rounded font-mono" style={{ backgroundColor: "rgba(0,212,255,0.1)", color: "#00D4FF", border: "1px solid rgba(0,212,255,0.2)" }}>v0.2</span>
         </div>
