@@ -1,210 +1,138 @@
+/**
+ * Commerce scorer — Task 2
+ *
+ * Signals:
+ *   GMV  (35%) — total cross-platform GMV in IDR, log-normalized, cap IDR 500M/month
+ *   CTR  (30%) — click-through rate %, cap 15%
+ *   CTOR (35%) — click-to-order rate % (orders/clicks), cap 30%
+ *
+ * CTOR derivation: if column absent but Orders + Clicks present → derive
+ * If click data missing entirely → GMV only at 60% weight, CTOR flagged N/A
+ */
+
 import { Creator, ConversionScore, LSTier, SignalScore } from "@/types/creator";
 import { SCORING_CONFIG } from "@/constants/scoring-config";
 import { classifyLsTier } from "./ls-tier";
 
-const W = SCORING_CONFIG.conversion.weights;
-const TIER_SCORES = SCORING_CONFIG.conversion.lsTierScores;
-const B = SCORING_CONFIG.conversion.benchmarks;
+const W = SCORING_CONFIG.commerce.weights;
+const B = SCORING_CONFIG.commerce.benchmarks;
+const TIER_SCORES = SCORING_CONFIG.lsTierScores;
 
-// ─── Individual Signal Normalizers ────────────────────────────────────────────
+type SignalKey = keyof typeof W;
 
-/**
- * Convert LS tier directly to 0-100 score using config lookup.
- * The tier encoding already captures cumulative GMV performance.
- */
-function normalizeLsTier(tier: LSTier): number {
-  return TIER_SCORES[tier];
+// ─── Normalizers ──────────────────────────────────────────────────────────────
+
+function normalizeGmv(idr: number): number {
+  if (idr <= 0) return 0;
+  if (idr >= B.gmv.capIDR) return 100;
+  const logVal = Math.log10(Math.max(idr, B.gmv.weakIDR));
+  const logMin = Math.log10(B.gmv.weakIDR);
+  const logMax = Math.log10(B.gmv.capIDR);
+  return Math.min(100, Math.max(0, ((logVal - logMin) / (logMax - logMin)) * 100));
 }
 
-/**
- * Normalize GMV trend (ratio of recent to prior period) to 0-100.
- *
- * Trend = gmv30d / (gmv60d - gmv30d) normalized around 1.0
- * < 0.7 = significant decline → 0–30
- * 0.7–1.0 = slight decline → 30–50
- * 1.0 (neutral) → 50
- * 1.0–1.3 = growth → 50–75
- * 1.3–2.0 = strong growth → 75–90
- * 2.0+ = exceptional → 90–100
- */
-function normalizeGmvTrend(trend: number): number {
-  if (trend <= 0) return 0;
-  if (trend >= 2.0) return 95;
-  if (trend >= 1.3) return 75 + ((trend - 1.3) / 0.7) * 20;
-  if (trend >= B.gmvTrendNeutral) return 50 + ((trend - 1.0) / 0.3) * 25;
-  if (trend >= 0.7) return 30 + ((trend - 0.7) / 0.3) * 20;
-  return (trend / 0.7) * 30;
+function normalizeCtr(ctr: number): number {
+  if (ctr <= 0) return 0;
+  if (ctr >= B.ctr.capRate) return 100;
+  if (ctr >= B.ctr.strong)  return 75 + ((ctr - B.ctr.strong)  / (B.ctr.capRate - B.ctr.strong))  * 25;
+  if (ctr >= B.ctr.average) return 50 + ((ctr - B.ctr.average) / (B.ctr.strong   - B.ctr.average)) * 25;
+  if (ctr >= B.ctr.weak)    return 20 + ((ctr - B.ctr.weak)    / (B.ctr.average  - B.ctr.weak))    * 30;
+  return (ctr / B.ctr.weak) * 20;
 }
 
-/**
- * Normalize GMV per livestream to 0-100.
- * Benchmarks derived from typical TikTok Shop performance:
- * < $100/ls = weak, $500 = average, $2K = strong, $10K+ = elite
- */
-function normalizeGmvPerLivestream(gmvPerLs: number): number {
-  if (gmvPerLs <= 0) return 0;
-  if (gmvPerLs >= 10_000) return 100;
-  if (gmvPerLs >= 2_000) return 80 + ((gmvPerLs - 2_000) / 8_000) * 20;
-  if (gmvPerLs >= 500) return 55 + ((gmvPerLs - 500) / 1_500) * 25;
-  if (gmvPerLs >= 100) return 25 + ((gmvPerLs - 100) / 400) * 30;
-  return (gmvPerLs / 100) * 25;
+function normalizeCtor(ctor: number): number {
+  if (ctor <= 0) return 0;
+  if (ctor >= B.ctor.capRate) return 100;
+  if (ctor >= B.ctor.strong)  return 75 + ((ctor - B.ctor.strong)  / (B.ctor.capRate - B.ctor.strong))  * 25;
+  if (ctor >= B.ctor.average) return 50 + ((ctor - B.ctor.average) / (B.ctor.strong   - B.ctor.average)) * 25;
+  if (ctor >= B.ctor.weak)    return 20 + ((ctor - B.ctor.weak)    / (B.ctor.average  - B.ctor.weak))    * 30;
+  return (ctor / B.ctor.weak) * 20;
 }
 
-/**
- * Normalize shop video efficiency (views-to-sale conversion) to 0-100.
- * Uses SV conversion rate % as primary, or derives a proxy from
- * shopVideoViews vs gmv30d if direct rate unavailable.
- *
- * Industry typical: < 0.5% = weak, 1-2% = average, 3%+ = strong
- */
-function normalizeSvEfficiency(svConvRate: number): number {
-  if (svConvRate <= 0) return 0;
-  if (svConvRate >= 5) return 100;
-  if (svConvRate >= 3) return 80 + ((svConvRate - 3) / 2) * 20;
-  if (svConvRate >= 1) return 50 + ((svConvRate - 1) / 2) * 30;
-  if (svConvRate >= 0.5) return 25 + ((svConvRate - 0.5) / 0.5) * 25;
-  return (svConvRate / 0.5) * 25;
-}
+// ─── Main scorer ──────────────────────────────────────────────────────────────
 
-/**
- * Normalize livestream frequency to 0-100.
- * Target = 10 livestreams/month (≈ 2.5/week).
- * Caps at 2× target to avoid rewarding quantity over quality.
- */
-function normalizeLivestreamFrequency(count: number): number {
-  const target = B.livestreamFrequencyTarget;
-  if (count <= 0) return 0;
-  if (count >= target * 2) return 100;
-  return Math.min(100, (count / target) * 100);
-}
-
-// ─── Main Conversion Scorer ───────────────────────────────────────────────────
-
-/**
- * Compute conversion score 0-100 for a creator.
- *
- * Handles single data point (only gmv30d available) by skipping
- * trend signal and redistributing its weight.
- *
- * Missing signals are skipped; weights redistributed proportionally.
- */
 export function computeConversionScore(creator: Creator): ConversionScore {
-  type SignalKey = keyof typeof W;
-
-  // Determine LS tier — use provided or infer from GMV
-  let tier: LSTier | null = creator.lsTier ?? null;
-  let inferredLsTier: LSTier | undefined;
-
-  if (!tier) {
-    const hasGoneLive = creator.livestreamsLast30d != null && creator.livestreamsLast30d > 0;
-    tier = classifyLsTier(creator.gmv30d, hasGoneLive || creator.gmv30d != null);
-    inferredLsTier = tier;
+  // Derive CTOR if not provided
+  let ctorValue: number | null = creator.ctor ?? null;
+  if (ctorValue == null && creator.orders30d != null && creator.clicks30d != null && creator.clicks30d > 0) {
+    ctorValue = (creator.orders30d / creator.clicks30d) * 100;
   }
 
-  // Compute GMV trend ratio
-  // Trend = current period / prior period
-  // If we have 60d data: prior30d = gmv60d - gmv30d
-  // If we have 90d data: prior60d = gmv90d - gmv30d
-  let gmvTrend: number | null = null;
-  if (creator.gmv30d != null && creator.gmv60d != null) {
-    const prior30d = creator.gmv60d - creator.gmv30d;
-    if (prior30d > 0) {
-      gmvTrend = creator.gmv30d / prior30d;
-    } else if (creator.gmv30d > 0 && prior30d === 0) {
-      // Creator went from 0 to positive — strong emerging signal
-      gmvTrend = 2.0;
-    }
-  }
-  // Only gmv30d available: no trend computable — skip signal
-
-  // GMV per livestream
-  let gmvPerLs: number | null = null;
-  if (creator.avgGmvPerLivestream != null) {
-    gmvPerLs = creator.avgGmvPerLivestream;
-  } else if (creator.gmv30d != null && creator.livestreamsLast30d != null && creator.livestreamsLast30d > 0) {
-    gmvPerLs = creator.gmv30d / creator.livestreamsLast30d;
-  }
-
-  // SV efficiency
-  let svEfficiency: number | null = null;
-  if (creator.svConversionRate != null) {
-    svEfficiency = creator.svConversionRate;
-  } else if (creator.shopVideoViews != null && creator.shopVideoViews > 0 && creator.gmv30d != null) {
-    // Rough proxy: assume avg order value ~$20 to estimate conversion count
-    const estimatedOrders = creator.gmv30d / 20;
-    svEfficiency = (estimatedOrders / creator.shopVideoViews) * 100;
-  }
-
-  // Livestream frequency
-  const lsFreq: number | null = creator.livestreamsLast30d ?? null;
-
-  // ─── Normalized signals map ──────────────────────────────────────────────
-
-  const normalizedMap: Record<SignalKey, number | null> = {
-    lsTier: tier ? normalizeLsTier(tier) : null,
-    gmvTrend: gmvTrend != null ? normalizeGmvTrend(gmvTrend) : null,
-    gmvPerLivestream: gmvPerLs != null ? normalizeGmvPerLivestream(gmvPerLs) : null,
-    svEfficiency: svEfficiency != null ? normalizeSvEfficiency(svEfficiency) : null,
-    livestreamFrequency: lsFreq != null ? normalizeLivestreamFrequency(lsFreq) : null,
-  };
+  const clickDataMissing = creator.ctr == null && creator.clicks30d == null && ctorValue == null;
+  const ctorMissing = ctorValue == null;
 
   const rawMap: Record<SignalKey, number | null> = {
-    lsTier: tier ? TIER_SCORES[tier] : null,
-    gmvTrend,
-    gmvPerLivestream: gmvPerLs,
-    svEfficiency,
-    livestreamFrequency: lsFreq,
+    gmv:  creator.gmv30d ?? null,
+    ctr:  creator.ctr ?? null,
+    ctor: ctorValue,
   };
 
-  // ─── Weight redistribution ───────────────────────────────────────────────
+  const normalizedMap: Record<SignalKey, number | null> = {
+    gmv:  rawMap.gmv  != null ? normalizeGmv(rawMap.gmv)   : null,
+    ctr:  rawMap.ctr  != null ? normalizeCtr(rawMap.ctr)   : null,
+    ctor: rawMap.ctor != null ? normalizeCtor(rawMap.ctor) : null,
+  };
 
-  const presentSignals = (Object.keys(normalizedMap) as SignalKey[]).filter(
-    (k) => normalizedMap[k] !== null
-  );
-  const missingSignals = (Object.keys(normalizedMap) as SignalKey[]).filter(
-    (k) => normalizedMap[k] === null
-  );
-
-  const totalMissingWeight = missingSignals.reduce((sum, k) => sum + W[k], 0);
-  const totalPresentWeight = presentSignals.reduce((sum, k) => sum + W[k], 0);
-
-  const effectiveWeights: Record<string, number> = {};
-  for (const key of presentSignals) {
-    const base = W[key];
-    const bonus = totalPresentWeight > 0 ? (base / totalPresentWeight) * totalMissingWeight : 0;
-    effectiveWeights[key] = base + bonus;
+  // If click data missing entirely → GMV-only mode at 60% effective weight
+  let effectiveW: Record<SignalKey, number>;
+  if (clickDataMissing && rawMap.gmv != null) {
+    effectiveW = { gmv: 1.0, ctr: 0, ctor: 0 };
+  } else {
+    const present = (Object.keys(W) as SignalKey[]).filter((k) => normalizedMap[k] !== null);
+    const missing  = (Object.keys(W) as SignalKey[]).filter((k) => normalizedMap[k] === null);
+    const totalMissingW  = missing.reduce((s, k) => s + W[k], 0);
+    const totalPresentW  = present.reduce((s, k) => s + W[k], 0);
+    effectiveW = {} as Record<SignalKey, number>;
+    for (const k of present) {
+      const base = W[k];
+      effectiveW[k] = base + (totalPresentW > 0 ? (base / totalPresentW) * totalMissingW : 0);
+    }
+    for (const k of missing) effectiveW[k] = 0;
   }
 
-  // ─── Build signal score objects and total ────────────────────────────────
+  const present = (Object.keys(W) as SignalKey[]).filter((k) => normalizedMap[k] !== null);
+  const missing  = (Object.keys(W) as SignalKey[]).filter((k) => normalizedMap[k] === null);
 
   let total = 0;
-  const signalScores: ConversionScore["signals"] = {
-    lsTier: null,
-    gmvTrend: null,
-    gmvPerLivestream: null,
-    svEfficiency: null,
-    livestreamFrequency: null,
+  const signals: ConversionScore["signals"] = {
+    gmv: null, ctr: null, ctor: null,
+    // Legacy shims
+    lsTier: null, gmvTrend: null, gmvPerLivestream: null, svEfficiency: null, livestreamFrequency: null,
   };
 
-  for (const key of presentSignals) {
-    const normalized = normalizedMap[key]!;
-    const weight = effectiveWeights[key];
-    const contribution = weight * normalized;
-    total += contribution;
+  const labels: Record<SignalKey, string> = {
+    gmv:  "GMV (IDR)",
+    ctr:  "Click-Through Rate",
+    ctor: ctorMissing ? "CTOR (N/A)" : "Click-to-Order Rate",
+  };
 
-    signalScores[key] = {
-      rawValue: rawMap[key],
-      normalizedScore: Math.round(normalized * 10) / 10,
-      weight,
+  for (const k of present) {
+    const norm = normalizedMap[k]!;
+    const w    = effectiveW[k];
+    const contribution = w * norm;
+    total += contribution;
+    signals[k] = {
+      rawValue: rawMap[k],
+      normalizedScore: Math.round(norm * 10) / 10,
+      weight: w,
       contribution,
+      label: labels[k],
     } as SignalScore;
+  }
+
+  // Infer LS tier for backward compat
+  let inferredLsTier: LSTier | undefined;
+  if (!creator.lsTier) {
+    const hasLive = (creator.livestreamsLast30d ?? 0) > 0;
+    inferredLsTier = classifyLsTier(creator.gmv30d, hasLive || creator.gmv30d != null);
   }
 
   return {
     total: Math.round(Math.max(0, Math.min(100, total))),
-    signals: signalScores,
-    missingSignals,
-    dataCompleteness: presentSignals.length / Object.keys(W).length,
+    signals,
+    ctorMissing,
+    missingSignals: missing,
+    dataCompleteness: present.length / Object.keys(W).length,
     inferredLsTier,
   };
 }

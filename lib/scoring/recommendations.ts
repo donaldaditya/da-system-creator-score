@@ -65,9 +65,10 @@ export function generateRecommendationTags(
   // ─── 🎯 Brand Safe ──────────────────────────────────────────────────────
   // Premium brand partnership candidate: engaged, consistent, niche-focused.
   // Requires ER > 3%, posting > 3×/week, high niche focus.
-  const erSignal = branding.signals.engagementRate;
+  const erSignal = branding.signals.engagement;
   const isHighEngagement = erSignal != null && (erSignal.rawValue ?? 0) > 3;
-  const isActivePosting = creator.postingFrequency != null && creator.postingFrequency > 3;
+  const isActivePosting = (creator.postingFrequency != null && creator.postingFrequency > 3) ||
+                          (creator.postsLast30d != null && creator.postsLast30d > 12);
   const isNicheFocused =
     creator.nicheFocus === NicheFocusLevel.High ||
     (creator.nicheAlignment != null && creator.nicheAlignment >= 80);
@@ -93,10 +94,8 @@ export function generateRecommendationTags(
   // Small but punching above their weight — high ER with small audience
   // signals strong community fit and brand authenticity opportunity.
   if (
-    creator.followers != null &&
-    creator.followers < 50_000 &&
-    erSignal != null &&
-    (erSignal.rawValue ?? 0) > 5
+    creator.followers != null && creator.followers < 50_000 &&
+    erSignal != null && (erSignal.rawValue ?? 0) > 5
   ) {
     tags.push(RecommendationTag.Emerging);
   }

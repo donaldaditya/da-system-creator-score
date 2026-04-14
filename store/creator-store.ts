@@ -92,9 +92,23 @@ const DEFAULT_SORT: SortConfig = {
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
+// Persist scoredCreators to sessionStorage so navigation doesn't lose results
+const SESSION_KEY = "roi_scored_creators";
+function loadFromSession(): ScoredCreator[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    return raw ? (JSON.parse(raw) as ScoredCreator[]) : [];
+  } catch { return []; }
+}
+function saveToSession(creators: ScoredCreator[]) {
+  if (typeof window === "undefined") return;
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(creators)); } catch { /* quota */ }
+}
+
 export const useCreatorStore = create<CreatorStore>()((set, get) => ({
   creators: [],
-  scoredCreators: [],
+  scoredCreators: loadFromSession(),
   brandingWeight: 0.5,
   conversionWeight: 0.5,
   campaignObjective: CampaignObjective.Both,
@@ -109,7 +123,7 @@ export const useCreatorStore = create<CreatorStore>()((set, get) => ({
 
   setCreators: (creators) => set({ creators }),
 
-  setScoredCreators: (scored) => set({ scoredCreators: scored }),
+  setScoredCreators: (scored) => { saveToSession(scored); set({ scoredCreators: scored }); },
 
   setWeights: (brandingWeight, conversionWeight) => {
     const { scoredCreators } = get();

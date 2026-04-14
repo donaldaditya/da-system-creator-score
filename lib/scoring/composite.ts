@@ -1,120 +1,109 @@
-import { Creator, ScoredCreator, BrandingScore, ConversionScore, CompositeScore } from "@/types/creator";
+/**
+ * Composite scorer — Task 2
+ *
+ * Overall = 0.5 × Branding + 0.5 × Commerce
+ *
+ * Badge logic:
+ *   Both present    → "Full Score"
+ *   Branding only   → "Branding Only" — Overall = Branding
+ *   Commerce only   → "Commerce Only" — Overall = Commerce
+ *   Neither         → "No Data"
+ */
+
+import { Creator, ScoredCreator, BrandingScore, ConversionScore, CompositeScore, ScoreBadge } from "@/types/creator";
 import { SCORING_CONFIG } from "@/constants/scoring-config";
 import { computeBrandingScore } from "./branding";
 import { computeConversionScore } from "./conversion";
 import { generateRecommendationTags } from "./recommendations";
 
-/**
- * Compute composite score from branding and conversion scores.
- *
- * Composite = (brandingScore × brandingWeight) + (conversionScore × conversionWeight)
- * Weights must sum to 1.0 — enforced by normalization here.
- *
- * @param brandingTotal - branding score 0-100
- * @param conversionTotal - conversion score 0-100
- * @param brandingWeight - e.g. 0.5 (defaults to config value)
- * @param conversionWeight - e.g. 0.5 (defaults to config value)
- */
+function hasBrandingData(b: BrandingScore): boolean {
+  return b.dataCompleteness > 0;
+}
+
+function hasCommerceData(c: ConversionScore): boolean {
+  return c.dataCompleteness > 0;
+}
+
 export function computeCompositeScore(
-  brandingTotal: number,
-  conversionTotal: number,
+  branding: BrandingScore,
+  commerce: ConversionScore,
   brandingWeight?: number,
-  conversionWeight?: number
+  conversionWeight?: number,
 ): CompositeScore {
   const bw = brandingWeight ?? SCORING_CONFIG.composite.defaultBrandingWeight;
   const cw = conversionWeight ?? SCORING_CONFIG.composite.defaultConversionWeight;
 
-  // Normalize weights to ensure they sum to 1
-  const totalWeight = bw + cw;
-  const normalizedBw = totalWeight > 0 ? bw / totalWeight : 0.5;
-  const normalizedCw = totalWeight > 0 ? cw / totalWeight : 0.5;
+  const brandingPresent = hasBrandingData(branding);
+  const commercePresent = hasCommerceData(commerce);
 
-  const total = brandingTotal * normalizedBw + conversionTotal * normalizedCw;
+  let badge: ScoreBadge;
+  let total: number;
+
+  if (brandingPresent && commercePresent) {
+    badge = "Full Score";
+    const total_w = bw + cw;
+    const nb = total_w > 0 ? bw / total_w : 0.5;
+    const nc = total_w > 0 ? cw / total_w : 0.5;
+    total = branding.total * nb + commerce.total * nc;
+  } else if (brandingPresent) {
+    badge = "Branding Only";
+    total = branding.total;
+  } else if (commercePresent) {
+    badge = "Commerce Only";
+    total = commerce.total;
+  } else {
+    badge = "No Data";
+    total = 0;
+  }
+
+  const totalW = bw + cw;
+  const normBw = totalW > 0 ? bw / totalW : 0.5;
+  const normCw = totalW > 0 ? cw / totalW : 0.5;
 
   return {
     total: Math.round(Math.max(0, Math.min(100, total))),
-    brandingScore: brandingTotal,
-    conversionScore: conversionTotal,
-    brandingWeight: normalizedBw,
-    conversionWeight: normalizedCw,
+    brandingScore: branding.total,
+    conversionScore: commerce.total,
+    brandingWeight: normBw,
+    conversionWeight: normCw,
+    badge,
   };
 }
 
-/**
- * Run the full scoring pipeline for a single creator.
- * Computes branding, conversion, composite scores and recommendation tags.
- *
- * @param creator - raw creator input
- * @param brandingWeight - optional weight override (0-1)
- * @param conversionWeight - optional weight override (0-1)
- */
 export function scoreCreator(
   creator: Creator,
   brandingWeight?: number,
-  conversionWeight?: number
+  conversionWeight?: number,
 ): ScoredCreator {
-  const branding: BrandingScore = computeBrandingScore(creator);
-  const conversion: ConversionScore = computeConversionScore(creator);
-  const composite: CompositeScore = computeCompositeScore(
-    branding.total,
-    conversion.total,
-    brandingWeight,
-    conversionWeight
-  );
-
+  const branding = computeBrandingScore(creator);
+  const conversion = computeConversionScore(creator);
+  const composite = computeCompositeScore(branding, conversion, brandingWeight, conversionWeight);
   const tags = generateRecommendationTags(creator, branding, conversion, composite);
 
-  return {
-    ...creator,
-    branding,
-    conversion,
-    composite,
-    tags,
-  };
+  return { ...creator, branding, conversion, composite, tags };
 }
 
-/**
- * Score multiple creators and assign rank by composite score descending.
- */
 export function scoreCreators(
   creators: Creator[],
   brandingWeight?: number,
-  conversionWeight?: number
+  conversionWeight?: number,
 ): ScoredCreator[] {
   const scored = creators.map((c) => scoreCreator(c, brandingWeight, conversionWeight));
-
-  // Sort by composite total descending and assign rank
   scored.sort((a, b) => b.composite.total - a.composite.total);
-  scored.forEach((c, i) => {
-    c.rank = i + 1;
-  });
-
+  scored.forEach((c, i) => { c.rank = i + 1; });
   return scored;
 }
 
-/**
- * Re-rank already-scored creators with updated weights (client-side use).
- * Avoids re-running the full scoring pipeline — just recomputes composite.
- */
 export function reweightCreators(
   scored: ScoredCreator[],
   brandingWeight: number,
-  conversionWeight: number
+  conversionWeight: number,
 ): ScoredCreator[] {
   const reweighted = scored.map((c) => ({
     ...c,
-    composite: computeCompositeScore(
-      c.branding.total,
-      c.conversion.total,
-      brandingWeight,
-      conversionWeight
-    ),
+    composite: computeCompositeScore(c.branding, c.conversion, brandingWeight, conversionWeight),
   }));
-
   reweighted.sort((a, b) => b.composite.total - a.composite.total);
-  reweighted.forEach((c, i) => {
-    c.rank = i + 1;
-  });
-
+  reweighted.forEach((c, i) => { c.rank = i + 1; });
   return reweighted;
 }

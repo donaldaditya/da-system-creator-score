@@ -2,6 +2,7 @@ import Papa from "papaparse";
 import { Creator, Platform, Category, LSTier, ContentConsistencyLevel, NicheFocusLevel } from "@/types/creator";
 import { mapColumns, mapRowToCreator, getMatchStats, ColumnMapping } from "./schema-mapper";
 import { isTikTokPartnerCenterFormat, aggregatePartnerCenterRows } from "./tiktok-partner-center";
+import { isShopeeFormat, aggregateShopeeRows } from "./shopee";
 
 export interface PartnerCenterMeta {
   totalRows: number;
@@ -37,6 +38,19 @@ export async function parseCsvFile(file: File): Promise<ParseResult> {
       complete: (results) => {
         const rawHeaders = results.meta.fields ?? [];
         const parseErrors: string[] = results.errors.map((e) => `Row ${e.row}: ${e.message}`);
+
+        // ── Shopee ConversionReport detection ────────────────────────────────
+        if (isShopeeFormat(rawHeaders)) {
+          const agg = aggregateShopeeRows(results.data as Record<string, string>[]);
+          resolve({
+            creators: agg.creators,
+            mappings: [], matchStats: { matched: 0, unrecognized: 0, unrecognizedHeaders: [] },
+            errors: agg.creators.length === 0 ? ["No creators found in Shopee report"] : [],
+            rawHeaders, isPartnerCenter: false,
+            partnerCenterMeta: { totalRows: agg.totalRows, creatorCount: agg.creatorCount, referenceDate: new Date(), detectedColumns: agg.detectedColumns },
+          });
+          return;
+        }
 
         // ── TikTok Partner Center detection ──────────────────────────────────
         if (isTikTokPartnerCenterFormat(rawHeaders)) {
