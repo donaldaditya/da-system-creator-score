@@ -7,7 +7,7 @@ not follower count.
 ## The Problem
 Over 25% of SEA ecommerce sales are creator-driven. 
 Most teams still select creators manually using gut feel 
-and follower metrics. This tool provide data-driven solution for that
+and follower metrics. This tool fixes that with a data-driven scoring model.
 
 ## What It Does
 - Scores creators on engagement rate, content-commerce fit, 
