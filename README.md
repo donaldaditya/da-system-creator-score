@@ -1,36 +1,25 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DA System: Creator Score
+**Data to Action for Commerce Teams**
 
-## Getting Started
+Score and rank creators based on what actually drives GMV — 
+not follower count.
 
-First, run the development server:
+## The Problem
+Over 25% of SEA ecommerce sales are creator-driven. 
+Most teams still select creators manually using gut feel 
+and follower metrics. This tool provide data-driven solution for that
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## What It Does
+- Scores creators on engagement rate, content-commerce fit, 
+  and conversion signals
+- Supports TikTok and Instagram creator data
+- Accepts affiliate order CSV exports from TikTok Partner 
+  Center and Shopee
+- Outputs ranked scores for branding and commerce objectives
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Live Tool
+https://www.da-system.ai
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Part of DA System
+This is Tool #1 in the DA System — a series of 
+Data to Action tools for commerce operators.
