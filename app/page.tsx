@@ -128,6 +128,9 @@ export default function HomePage() {
   const [handleInput, setHandleInput] = useState("");
   const [fetchPlatform, setFetchPlatform] = useState<"tiktok" | "instagram">("tiktok");
   const [isFetching, setIsFetching] = useState(false);
+  const [fetchGmv, setFetchGmv] = useState("");
+  const [fetchCtr, setFetchCtr] = useState("");
+  const [fetchCtor, setFetchCtor] = useState("");
   const [previews, setPreviews] = useState<MappingPreview[]>([]);
   const [pendingPreview, setPendingPreview] = useState<MappingPreview | null>(null);
   const [parseStatus, setParseStatus] = useState<Record<string, string>>({});
@@ -184,6 +187,10 @@ export default function HomePage() {
       });
       const data = await res.json();
       if (data.profiles) {
+        const gmvVal = fetchGmv ? parseFloat(fetchGmv.replace(/[^0-9.]/g, "")) || undefined : undefined;
+        const ctrVal = fetchCtr ? parseFloat(fetchCtr) || undefined : undefined;
+        const ctorVal = fetchCtor ? parseFloat(fetchCtor) || undefined : undefined;
+
         const fetched: Creator[] = data.profiles.map((p: Record<string, unknown>, i: number) => ({
           id: `fetch-${i}-${Date.now()}`,
           handle: String(p.handle),
@@ -194,6 +201,10 @@ export default function HomePage() {
           postsLast30d: p.postsLast30d as number | undefined,
           avatarUrl: p.avatarUrl as string | undefined,
           sources: [fetchPlatform === "instagram" ? Platform.Instagram : Platform.TikTok],
+          // Optional commerce signals from manual input
+          gmv30d: gmvVal,
+          ctr: ctrVal,
+          ctor: ctorVal,
         }));
         setCreators((prev) => mergeCreators(prev, fetched));
         setHandleInput("");
@@ -325,7 +336,50 @@ export default function HomePage() {
                 {isFetching ? "Fetching…" : "Fetch"}
               </button>
             </div>
-            <p className="text-[10px]" style={{ color: "#4B5563" }}>Requires RAPIDAPI_KEY env variable. Fetches followers, engagement rate, post frequency.</p>
+            {/* Optional commerce signals */}
+            <div className="rounded-lg p-3 space-y-2" style={{ backgroundColor: "#0A0A0F", border: "1px solid #1E1E2E" }}>
+              <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: "#F59E0B" }}>
+                ⚡ Optional Commerce Signals <span className="normal-case font-normal" style={{ color: "#4B5563" }}>— applied to fetched creators above</span>
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px]" style={{ color: "#6B7280" }}>GMV 30d (IDR)</label>
+                  <input
+                    type="text"
+                    value={fetchGmv}
+                    onChange={(e) => setFetchGmv(e.target.value)}
+                    placeholder="e.g. 50000000"
+                    className="w-full rounded text-xs font-mono"
+                    style={{ backgroundColor: "#12121A", border: "1px solid #1E1E2E", color: "#E8EAF0", padding: "6px 10px", outline: "none" }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px]" style={{ color: "#6B7280" }}>CTR %</label>
+                  <input
+                    type="number"
+                    value={fetchCtr}
+                    onChange={(e) => setFetchCtr(e.target.value)}
+                    placeholder="e.g. 3.5"
+                    min="0" max="100" step="0.1"
+                    className="w-full rounded text-xs font-mono"
+                    style={{ backgroundColor: "#12121A", border: "1px solid #1E1E2E", color: "#E8EAF0", padding: "6px 10px", outline: "none" }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px]" style={{ color: "#6B7280" }}>CTOR %</label>
+                  <input
+                    type="number"
+                    value={fetchCtor}
+                    onChange={(e) => setFetchCtor(e.target.value)}
+                    placeholder="e.g. 12"
+                    min="0" max="100" step="0.1"
+                    className="w-full rounded text-xs font-mono"
+                    style={{ backgroundColor: "#12121A", border: "1px solid #1E1E2E", color: "#E8EAF0", padding: "6px 10px", outline: "none" }}
+                  />
+                </div>
+              </div>
+            </div>
+            <p className="text-[10px]" style={{ color: "#4B5563" }}>Fetches followers, engagement rate, post frequency via RapidAPI. Fill commerce fields above to get a Full Score.</p>
           </div>
 
           {/* Zone 2: Branding CSV */}
