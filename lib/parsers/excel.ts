@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { Creator } from "@/types/creator";
+import { IDR_TO_USD_RATE } from "@/constants/scoring-config";
 import { mapColumns, mapRowToCreator, getMatchStats, ColumnMapping } from "./schema-mapper";
 import { ParseResult } from "./csv";
 import { isTikTokPartnerCenterFormat, aggregatePartnerCenterRows } from "./tiktok-partner-center";
@@ -236,20 +237,26 @@ export function buildExportWorkbook(scoredCreators: import("@/types/creator").Sc
   const wb = XLSX.utils.book_new();
 
   // Sheet 1: Full list
-  const fullListData = scoredCreators.map((c, i) => ({
-    "#": i + 1,
-    Handle: c.handle,
-    Platform: c.platform,
-    Category: c.category || "",
-    "LS Tier": c.lsTier || c.conversion.inferredLsTier || "",
-    "Branding Score": c.branding.total,
-    "Conversion Score": c.conversion.total,
-    "Composite Score": c.composite.total,
-    Tags: c.tags.join(", "),
-    Followers: c.followers || "",
-    "Engagement Rate %": c.engagementRate || "",
-    "GMV 30d": c.gmv30d || "",
-  }));
+  const fullListData = scoredCreators.map((c, i) => {
+    const lsTier = c.lsTier || c.conversion.inferredLsTier || "";
+    const gmvIdr = c.gmv30d || null;
+    const gmvUsd = gmvIdr != null ? Math.round(gmvIdr / IDR_TO_USD_RATE) : "";
+    return {
+      "#": i + 1,
+      Handle: c.handle,
+      Platform: c.platform,
+      Category: c.category || "",
+      "TikTok Shop LS Tier": lsTier,
+      "Branding Score": c.branding.total,
+      "Conversion Score": c.conversion.total,
+      "Composite Score": c.composite.total,
+      Tags: c.tags.join(", "),
+      Followers: c.followers || "",
+      "Engagement Rate %": c.engagementRate || "",
+      "GMV 30d (IDR)": gmvIdr || "",
+      "GMV 30d (USD)": gmvUsd,
+    };
+  });
   const ws1 = XLSX.utils.json_to_sheet(fullListData);
   XLSX.utils.book_append_sheet(wb, ws1, "All Creators");
 
@@ -274,17 +281,22 @@ export function buildExportWorkbook(scoredCreators: import("@/types/creator").Sc
 
   // Sheet 3: Top 10 summary
   const top10 = scoredCreators.slice(0, 10);
-  const summaryData = top10.map((c, i) => ({
-    Rank: i + 1,
-    Handle: c.handle,
-    Platform: c.platform,
-    "Composite Score": c.composite.total,
-    "Branding Score": c.branding.total,
-    "Conversion Score": c.conversion.total,
-    "LS Tier": c.lsTier || c.conversion.inferredLsTier || "",
-    Tags: c.tags.join(", "),
-    Recommendation: c.tags.length > 0 ? `Strong candidate: ${c.tags[0]}` : "Standard candidate",
-  }));
+  const summaryData = top10.map((c, i) => {
+    const gmvIdr = c.gmv30d || null;
+    const gmvUsd = gmvIdr != null ? Math.round(gmvIdr / IDR_TO_USD_RATE) : "";
+    return {
+      Rank: i + 1,
+      Handle: c.handle,
+      Platform: c.platform,
+      "Composite Score": c.composite.total,
+      "Branding Score": c.branding.total,
+      "Conversion Score": c.conversion.total,
+      "TikTok Shop LS Tier": c.lsTier || c.conversion.inferredLsTier || "",
+      "GMV 30d (USD)": gmvUsd,
+      Tags: c.tags.join(", "),
+      Recommendation: c.tags.length > 0 ? `Strong candidate: ${c.tags[0]}` : "Standard candidate",
+    };
+  });
   const ws3 = XLSX.utils.json_to_sheet(summaryData);
   XLSX.utils.book_append_sheet(wb, ws3, "Top 10 Summary");
 

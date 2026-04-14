@@ -7,6 +7,10 @@
  *   Commerce = GMV (35%) + CTR (30%) + CTOR (35%)
  *   Overall  = 0.5 × Branding + 0.5 × Commerce
  */
+/** IDR to USD exchange rate — update periodically */
+export const IDR_TO_USD_RATE = 16_000; // 1 USD ≈ 16,000 IDR
+export const usdFromIdr = (idr: number) => idr / IDR_TO_USD_RATE;
+
 export const SCORING_CONFIG = {
 
   branding: {

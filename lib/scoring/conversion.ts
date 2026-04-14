@@ -11,7 +11,7 @@
  */
 
 import { Creator, ConversionScore, LSTier, SignalScore } from "@/types/creator";
-import { SCORING_CONFIG } from "@/constants/scoring-config";
+import { SCORING_CONFIG, usdFromIdr } from "@/constants/scoring-config";
 import { classifyLsTier } from "./ls-tier";
 
 const W = SCORING_CONFIG.commerce.weights;
@@ -120,11 +120,12 @@ export function computeConversionScore(creator: Creator): ConversionScore {
     } as SignalScore;
   }
 
-  // Infer LS tier for backward compat
+  // Infer LS tier — convert IDR → USD before classifying
   let inferredLsTier: LSTier | undefined;
   if (!creator.lsTier) {
     const hasLive = (creator.livestreamsLast30d ?? 0) > 0;
-    inferredLsTier = classifyLsTier(creator.gmv30d, hasLive || creator.gmv30d != null);
+    const gmvUsd = creator.gmv30d != null ? usdFromIdr(creator.gmv30d) : undefined;
+    inferredLsTier = classifyLsTier(gmvUsd, hasLive || creator.gmv30d != null);
   }
 
   return {
