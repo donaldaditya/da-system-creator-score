@@ -33,18 +33,26 @@ export function LeadGate({ children }: { children: React.ReactNode }) {
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = (ev: React.FormEvent) => {
+  const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     if (!validate()) return;
     setSubmitting(true);
 
-    // Store lead
     const lead: LeadData = { ...form, timestamp: Date.now() };
+
+    // Always save to localStorage as fallback
     try {
       const existing: LeadData[] = JSON.parse(localStorage.getItem(LEADS_KEY) ?? "[]");
       existing.push(lead);
       localStorage.setItem(LEADS_KEY, JSON.stringify(existing));
     } catch { /* quota or SSR */ }
+
+    // Send to Google Sheets via API route (fire-and-forget, don't block UX)
+    fetch("/api/leads", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(lead),
+    }).catch(() => { /* silently ignore — localStorage is the fallback */ });
 
     sessionStorage.setItem(GATE_KEY, "1");
     setPassed(true);
