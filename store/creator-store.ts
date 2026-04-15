@@ -17,10 +17,15 @@ import { reweightCreators } from "@/lib/scoring/composite";
 
 // ─── State Shape ──────────────────────────────────────────────────────────────
 
+export type Currency = "IDR" | "USD";
+
 interface CreatorStore {
   // Raw and scored data
   creators: Creator[];
   scoredCreators: ScoredCreator[];
+
+  // Currency preference
+  currency: Currency;
 
   // Scoring weights (0-1, sum = 1)
   brandingWeight: number;
@@ -63,6 +68,8 @@ interface CreatorStore {
   toggleComparison: (creatorId: string) => void;
   clearComparison: () => void;
   setSelectedCreator: (id: string | null) => void;
+
+  setCurrency: (c: Currency) => void;
 
   setIsScoring: (loading: boolean) => void;
   setScoringError: (error: string | null) => void;
@@ -109,6 +116,7 @@ function saveToSession(creators: ScoredCreator[]) {
 export const useCreatorStore = create<CreatorStore>()((set, get) => ({
   creators: [],
   scoredCreators: loadFromSession(),
+  currency: "IDR",
   brandingWeight: 0.5,
   conversionWeight: 0.5,
   campaignObjective: CampaignObjective.Both,
@@ -180,6 +188,8 @@ export const useCreatorStore = create<CreatorStore>()((set, get) => ({
   clearComparison: () => set({ selectedForComparison: [] }),
 
   setSelectedCreator: (id) => set({ selectedCreatorId: id }),
+
+  setCurrency: (currency) => set({ currency }),
 
   setIsScoring: (isScoring) => set({ isScoring }),
 

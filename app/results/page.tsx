@@ -3,19 +3,20 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useCreatorStore } from "@/store/creator-store";
+import type { Currency } from "@/store/creator-store";
 import { WeightSlider } from "@/components/WeightSlider";
 import type { ScoredCreator, SignalScore, ScoreBadge } from "@/types/creator";
+import { IDR_TO_USD_RATE } from "@/constants/scoring-config";
 
 // ─── Benchmark constants (Indonesia creator market averages) ──────────────────
 
 const BENCHMARKS = {
-  engagementRate: 8,         // % — Indonesia TikTok average
-  postFrequency:  12,        // posts/month
-  followerMidMin: 100_000,   // mid-tier floor
-  followerMidMax: 500_000,   // mid-tier ceiling
-  gmvIDR:         240_000_000, // IDR 240M/month — LS5 entry threshold ($15K USD)
-  ctr:            3,         // %
-  ctor:           7,         // %
+  engagementRate: 8,       // % — Indonesia TikTok average
+  postFrequency:  12,      // posts/month
+  followerMidMin: 100_000, // mid-tier floor
+  followerMidMax: 500_000, // mid-tier ceiling
+  ctr:            3,       // %
+  ctor:           7,       // %
 } as const;
 
 // ─── Score label ──────────────────────────────────────────────────────────────
@@ -43,6 +44,26 @@ function fmtIDR(n?: number): string {
   if (n >= 1_000)         return `Rp ${Math.round(n / 1_000)}K`;
   return `Rp ${n.toLocaleString("id-ID")}`;
 }
+
+/** Display GMV in user's chosen currency (IDR value stored internally) */
+function fmtGMV(idrValue: number | undefined, currency: Currency): string {
+  if (idrValue == null) return "—";
+  if (currency === "USD") {
+    const usd = idrValue / IDR_TO_USD_RATE;
+    if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(1)}M`;
+    if (usd >= 1_000)     return `$${Math.round(usd / 1_000)}K`;
+    return `$${Math.round(usd).toLocaleString()}`;
+  }
+  return fmtIDR(idrValue);
+}
+
+/** GMV benchmark label in chosen currency */
+function gmvBenchmarkLabel(currency: Currency): string {
+  return currency === "USD" ? "$15,000/mo" : "Rp 240M/mo";
+}
+
+/** GMV benchmark value for comparison (always IDR internally) */
+const GMV_BENCHMARK_IDR = 240_000_000;
 
 function fmtNum(n?: number): string {
   if (n == null) return "—";
@@ -112,7 +133,7 @@ const SIGNAL_NAMES: Record<string, string> = {
   ctor:       "CTOR",
 };
 
-function generateAnalysis(creator: ScoredCreator): string {
+function generateAnalysis(creator: ScoredCreator, currency: Currency = "IDR"): string {
   const overall = creator.composite.total;
   const { label } = scoreLabelInfo(overall);
   const handle = `@${creator.handle}`;
@@ -132,7 +153,7 @@ function generateAnalysis(creator: ScoredCreator): string {
   const lowestSignal = allSignals[0];
 
   const platforms = creator.sources?.map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(" + ") ?? creator.platform;
-  const gmvText  = creator.gmv30d ? fmtIDR(creator.gmv30d) : "no tracked GMV";
+  const gmvText  = creator.gmv30d ? fmtGMV(creator.gmv30d, currency) : "no tracked GMV";
 
   // CTOR text + direction
   let ctorRaw: number | undefined;
@@ -220,7 +241,7 @@ function MiniBar({ value, color }: { value: number; color: string }) {
 
 // ─── Benchmark Context Modal ──────────────────────────────────────────────────
 
-function BenchmarkModal({ onClose }: { onClose: () => void }) {
+function BenchmarkModal({ onClose, currency }: { onClose: () => void; currency: Currency }) {
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 9999,
@@ -270,7 +291,7 @@ function BenchmarkModal({ onClose }: { onClose: () => void }) {
           </p>
           <div className="space-y-1.5">
             {[
-              { name: "GMV (30d)",  weight: "35%", desc: `Total gross merchandise value in IDR. Cap IDR 500M. Benchmark IDR 240M/mo ($15K USD — LS5 threshold).` },
+              { name: "GMV (30d)",  weight: "35%", desc: `Total GMV (stored in IDR internally). Cap IDR 500M. Benchmark IDR 240M/mo = $15,000 USD (LS5 entry threshold). Display in ${currency}.` },
               { name: "CTR",        weight: "30%", desc: "Click-through rate on affiliate links. Cap 15%. Benchmark 3%." },
               { name: "CTOR",       weight: "35%", desc: "Click-to-order rate (orders ÷ clicks). Cap 30%. Benchmark 7%. Derived if orders + clicks present." },
             ].map((s) => (
@@ -322,7 +343,7 @@ function BenchmarkModal({ onClose }: { onClose: () => void }) {
               ["Engagement Rate", "8%"],
               ["Post Frequency",  "12 posts/mo"],
               ["Follower Mid-tier", "100K–500K"],
-              ["GMV (30d)",       "IDR 240M ($15K)"],
+              ["GMV (30d)",       currency === "USD" ? "$15,000" : "IDR 240M"],
               ["CTR",             "3%"],
               ["CTOR",            "7%"],
             ].map(([k, v]) => (
@@ -334,8 +355,10 @@ function BenchmarkModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <p className="text-[10px] text-center" style={{ color: "#4B5563" }}>
-          Benchmarks reflect Indonesia creator market averages. Recalibrate for other markets.
+        <p className="text-[10px] leading-relaxed" style={{ color: "#4B5563" }}>
+          Benchmarks reflect Indonesia creator market averages (TikTok ID engagement ~8%, mid-tier GMV $15K/month).
+          Results for non-Indonesia creators will still score correctly but benchmark comparisons may not be representative.
+          Contact for market-specific calibration.
         </p>
       </div>
     </div>
@@ -344,10 +367,11 @@ function BenchmarkModal({ onClose }: { onClose: () => void }) {
 
 // ─── Creator Card ─────────────────────────────────────────────────────────────
 
-function CreatorCard({ creator, onClick, selected }: {
+function CreatorCard({ creator, onClick, selected, currency }: {
   creator: ScoredCreator;
   onClick: () => void;
   selected: boolean;
+  currency: Currency;
 }) {
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const col  = scoreColor(creator.composite.total);
@@ -372,9 +396,10 @@ function CreatorCard({ creator, onClick, selected }: {
   const benchReach = followerBenchmark(creator.followers);
   const benchGmv = benchmarkLine(
     creator.gmv30d,
-    BENCHMARKS.gmvIDR,
+    GMV_BENCHMARK_IDR,
     "GMV",
-    fmtIDR,
+    (v) => fmtGMV(v, currency),
+    () => gmvBenchmarkLabel(currency),
   );
   const benchCtr = benchmarkLine(
     creator.ctr,
@@ -393,7 +418,7 @@ function CreatorCard({ creator, onClick, selected }: {
     (v) => `${v.toFixed(1)}%`,
   );
 
-  const analysis = generateAnalysis(creator);
+  const analysis = generateAnalysis(creator, currency);
 
   return (
     <div onClick={onClick} className="rounded-xl p-4 cursor-pointer transition-all"
@@ -511,18 +536,18 @@ function CreatorCard({ creator, onClick, selected }: {
       {(creator.gmv30d || creator.orders30d) && (
         <div className="grid grid-cols-3 gap-1 text-[9px] mt-2 pt-2" style={{ borderTop: "1px solid #1E1E2E" }}>
           <div>
-            <span style={{ color: "#6B7280" }}>Total GMV</span>
-            <p className="font-mono font-bold" style={{ color: "#F59E0B" }}>{fmtIDR(creator.gmv30d)}</p>
+            <span style={{ color: "#6B7280" }}>Total GMV ({currency})</span>
+            <p className="font-mono font-bold" style={{ color: "#F59E0B" }}>{fmtGMV(creator.gmv30d, currency)}</p>
           </div>
           {creator.tiktokGmv30d && creator.shopeeGmv30d ? (
             <>
-              <div><span style={{ color: "#6B7280" }}>TikTok</span><p className="font-mono" style={{ color: "#E8EAF0" }}>{fmtIDR(creator.tiktokGmv30d)}</p></div>
-              <div><span style={{ color: "#6B7280" }}>Shopee</span><p className="font-mono" style={{ color: "#E8EAF0" }}>{fmtIDR(creator.shopeeGmv30d)}</p></div>
+              <div><span style={{ color: "#6B7280" }}>TikTok</span><p className="font-mono" style={{ color: "#E8EAF0" }}>{fmtGMV(creator.tiktokGmv30d, currency)}</p></div>
+              <div><span style={{ color: "#6B7280" }}>Shopee</span><p className="font-mono" style={{ color: "#E8EAF0" }}>{fmtGMV(creator.shopeeGmv30d, currency)}</p></div>
             </>
           ) : (
             <>
               <div><span style={{ color: "#6B7280" }}>Orders</span><p className="font-mono" style={{ color: "#E8EAF0" }}>{fmtNum(creator.orders30d)}</p></div>
-              <div><span style={{ color: "#6B7280" }}>Avg Order</span><p className="font-mono" style={{ color: "#E8EAF0" }}>{fmtIDR(creator.avgOrderValue)}</p></div>
+              <div><span style={{ color: "#6B7280" }}>Avg Order</span><p className="font-mono" style={{ color: "#E8EAF0" }}>{fmtGMV(creator.avgOrderValue, currency)}</p></div>
             </>
           )}
         </div>
@@ -561,7 +586,7 @@ function CreatorCard({ creator, onClick, selected }: {
 
 export default function ResultsPage() {
   const router = useRouter();
-  const { scoredCreators, brandingWeight, setWeights } = useCreatorStore();
+  const { scoredCreators, brandingWeight, setWeights, currency } = useCreatorStore();
   const [sort, setSort] = useState<"overall" | "branding" | "commerce" | "gmv">("overall");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -663,9 +688,9 @@ export default function ResultsPage() {
           doc.setFontSize(10); doc.setTextColor(30,30,30);
           doc.text("Commerce Detail", M, y); y += lineH;
           doc.setTextColor(100,100,100);
-          doc.text(`Total GMV (30d): ${fmtIDR(creator.gmv30d)}`, M + 4, y);
-          if (creator.tiktokGmv30d) { y += lineH; doc.text(`TikTok GMV: ${fmtIDR(creator.tiktokGmv30d)}`, M + 4, y); }
-          if (creator.shopeeGmv30d) { y += lineH; doc.text(`Shopee GMV: ${fmtIDR(creator.shopeeGmv30d)}`, M + 4, y); }
+          doc.text(`Total GMV 30d (${currency}): ${fmtGMV(creator.gmv30d, currency)}`, M + 4, y);
+          if (creator.tiktokGmv30d) { y += lineH; doc.text(`TikTok GMV: ${fmtGMV(creator.tiktokGmv30d, currency)}`, M + 4, y); }
+          if (creator.shopeeGmv30d) { y += lineH; doc.text(`Shopee GMV: ${fmtGMV(creator.shopeeGmv30d, currency)}`, M + 4, y); }
           if (creator.orders30d)    { y += lineH; doc.text(`Orders: ${creator.orders30d}`, M + 4, y); }
         }
 
@@ -691,7 +716,7 @@ export default function ResultsPage() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: "#0A0A0F", color: "#E8EAF0" }}>
-      {showBenchmarkModal && <BenchmarkModal onClose={() => setShowBenchmarkModal(false)} />}
+      {showBenchmarkModal && <BenchmarkModal onClose={() => setShowBenchmarkModal(false)} currency={currency} />}
 
       {/* Header */}
       <header className="border-b px-6 py-3 flex items-center justify-between shrink-0"
@@ -764,6 +789,7 @@ export default function ResultsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-w-7xl mx-auto">
           {sorted.map((c) => (
             <CreatorCard key={c.id} creator={c} selected={c.id === selectedId}
+              currency={currency}
               onClick={() => setSelectedId(c.id === selectedId ? null : c.id)} />
           ))}
         </div>

@@ -4,8 +4,10 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { WeightSlider } from "@/components/WeightSlider";
 import { useCreatorStore } from "@/store/creator-store";
+import type { Currency } from "@/store/creator-store";
 import { CampaignObjective, Category, Platform } from "@/types/creator";
 import type { Creator, ScoredCreator } from "@/types/creator";
+import { IDR_TO_USD_RATE } from "@/constants/scoring-config";
 import { parseCsvFile } from "@/lib/parsers/csv";
 import { parseExcelFile } from "@/lib/parsers/excel";
 
@@ -120,6 +122,7 @@ export default function HomePage() {
   const router = useRouter();
   const {
     brandingWeight, conversionWeight, campaignObjective, targetCategories,
+    currency, setCurrency,
     setCampaignObjective, setTargetCategories, setWeights, setScoredCreators,
     setIsScoring, setScoringError, isScoring, scoringError,
   } = useCreatorStore();
@@ -187,7 +190,11 @@ export default function HomePage() {
       });
       const data = await res.json();
       if (data.profiles) {
-        const gmvVal = fetchGmv ? parseFloat(fetchGmv.replace(/[^0-9.]/g, "")) || undefined : undefined;
+        const gmvRaw = fetchGmv ? parseFloat(fetchGmv.replace(/[^0-9.]/g, "")) || undefined : undefined;
+        // Always store GMV in IDR internally; convert from USD if needed
+        const gmvVal = gmvRaw != null
+          ? (currency === "USD" ? gmvRaw * IDR_TO_USD_RATE : gmvRaw)
+          : undefined;
         const ctrVal = fetchCtr ? parseFloat(fetchCtr) || undefined : undefined;
         const ctorVal = fetchCtor ? parseFloat(fetchCtor) || undefined : undefined;
 
@@ -267,7 +274,32 @@ export default function HomePage() {
 
         {/* Campaign Setup */}
         <div className="rounded-xl p-5 space-y-4" style={{ backgroundColor: "#12121A", border: "1px solid #1E1E2E" }}>
-          <h3 className="text-sm font-semibold">Campaign Setup</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Campaign Setup</h3>
+            {/* Currency toggle */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px]" style={{ color: "#4B5563" }}>Currency</span>
+              <div className="flex rounded overflow-hidden" style={{ border: "1px solid #1E1E2E" }}>
+                {(["IDR", "USD"] as Currency[]).map((c) => (
+                  <button key={c} onClick={() => setCurrency(c)}
+                    className="px-3 py-1 text-[10px] font-mono font-semibold transition-colors"
+                    style={{
+                      backgroundColor: currency === c ? "rgba(0,212,255,0.12)" : "transparent",
+                      color: currency === c ? "#00D4FF" : "#6B7280",
+                    }}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          {/* Market disclaimer */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg" style={{ backgroundColor: "rgba(107,114,128,0.06)", border: "1px solid #1E1E2E" }}>
+            <span style={{ color: "#4B5563", fontSize: "10px" }}>🌏</span>
+            <span className="text-[10px]" style={{ color: "#4B5563" }}>
+              Benchmarks calibrated for <span style={{ color: "#6B7280" }}>Indonesia market</span>
+            </span>
+          </div>
 
           <div>
             <label className="block text-[10px] uppercase tracking-wider mb-2" style={{ color: "#6B7280" }}>Campaign Objective</label>
@@ -343,12 +375,14 @@ export default function HomePage() {
               </p>
               <div className="grid grid-cols-3 gap-2">
                 <div className="space-y-1">
-                  <label className="text-[10px]" style={{ color: "#6B7280" }}>GMV 30d (IDR)</label>
+                  <label className="text-[10px]" style={{ color: "#6B7280" }}>
+                    GMV 30d ({currency})
+                  </label>
                   <input
                     type="text"
                     value={fetchGmv}
                     onChange={(e) => setFetchGmv(e.target.value)}
-                    placeholder="e.g. 50000000"
+                    placeholder={currency === "USD" ? "e.g. 3125" : "e.g. 50000000"}
                     className="w-full rounded text-xs font-mono"
                     style={{ backgroundColor: "#12121A", border: "1px solid #1E1E2E", color: "#E8EAF0", padding: "6px 10px", outline: "none" }}
                   />
